@@ -20,6 +20,30 @@ class CustomerStateResponse(BaseModel):
     created_at: datetime
 
 
+class CustomerListItemResponse(BaseModel):
+    id: int
+    name: str
+    contact: str
+    email: Optional[str] = None
+    upi_vpa: str
+    masked_upi: str
+    razorpay_customer_id: Optional[str] = None
+    mandate_order_id: Optional[str] = None
+    mandate_token_id: Optional[str] = None
+    mandate_approved: bool
+    embedding_count: int
+    consent_given_at: Optional[datetime] = None
+    consent_version: Optional[str] = None
+    created_at: datetime
+
+
+class CustomerUpdateRequest(BaseModel):
+    name: str
+    contact: str
+    email: str
+    upi_vpa: str
+
+
 class RegisterResponse(BaseModel):
     customer_id: int
     mandate_order_id: str

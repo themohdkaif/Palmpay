@@ -64,7 +64,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True)
-    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
     merchant_id = Column(String, nullable=False)
 
     amount_rupees = Column(Float, nullable=True)

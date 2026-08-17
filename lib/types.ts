@@ -30,6 +30,23 @@ export interface RegisterFormData {
   consent_version?: string;
 }
 
+export interface AdminCustomer {
+  id: number;
+  name: string;
+  contact: string;
+  email?: string;
+  upi_vpa: string;
+  masked_upi: string;
+  razorpay_customer_id?: string;
+  mandate_order_id?: string;
+  mandate_token_id?: string;
+  mandate_approved: boolean;
+  embedding_count: number;
+  consent_given_at?: string;
+  consent_version?: string;
+  created_at: string;
+}
+
 export type PaymentFlowStatus =
   | "idle"
   | "identifying"

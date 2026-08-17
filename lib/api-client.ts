@@ -1,4 +1,4 @@
-import { IdentifyResponse, AuthorizeResponse, RegisterResponse, RegisterFormData } from "./types";
+import { IdentifyResponse, AuthorizeResponse, RegisterResponse, RegisterFormData, AdminCustomer } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -260,5 +260,87 @@ export async function fetchTransactions(): Promise<{ transactions: any[] }> {
   } catch (error: any) {
     console.error(`[API ERROR] GET ${targetUrl}:`, error);
     return { transactions: [] };
+  }
+}
+
+/**
+ * Fetch all registered customers for admin management panel
+ */
+export async function fetchCustomers(): Promise<AdminCustomer[]> {
+  const targetUrl = `${API_BASE_URL}/customers`;
+  console.log(`[API REQUEST] GET ${targetUrl}`);
+
+  try {
+    const response = await fetch(targetUrl);
+    const jsonBody = await response.json().catch(() => []);
+    console.log(`[API RESPONSE] GET ${targetUrl}`, jsonBody);
+
+    if (!response.ok) {
+      throw new Error(jsonBody.detail || "Failed to fetch customer directory");
+    }
+
+    return jsonBody as AdminCustomer[];
+  } catch (error: any) {
+    console.error(`[API ERROR] GET ${targetUrl}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Update editable customer details (name, contact, email, upi_vpa)
+ */
+export async function updateCustomer(
+  customerId: number,
+  data: { name: string; contact: string; email: string; upi_vpa: string }
+): Promise<AdminCustomer> {
+  const targetUrl = `${API_BASE_URL}/customers/${customerId}`;
+  console.log(`[API REQUEST] PUT ${targetUrl}`, data);
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+
+    const jsonBody = await response.json().catch(() => ({}));
+    console.log(`[API RESPONSE] PUT ${targetUrl}`, jsonBody);
+
+    if (!response.ok) {
+      const detail = jsonBody.detail;
+      const msg = typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg).join(", ") : "Failed to update customer";
+      throw new Error(msg);
+    }
+
+    return jsonBody as AdminCustomer;
+  } catch (error: any) {
+    console.error(`[API ERROR] PUT ${targetUrl}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Permanently delete customer record and palm vector embeddings
+ */
+export async function deleteCustomer(customerId: number): Promise<{ ok: boolean; message: string }> {
+  const targetUrl = `${API_BASE_URL}/customers/${customerId}`;
+  console.log(`[API REQUEST] DELETE ${targetUrl}`);
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: "DELETE",
+    });
+
+    const jsonBody = await response.json().catch(() => ({}));
+    console.log(`[API RESPONSE] DELETE ${targetUrl}`, jsonBody);
+
+    if (!response.ok) {
+      throw new Error(jsonBody.detail || "Failed to delete customer");
+    }
+
+    return jsonBody;
+  } catch (error: any) {
+    console.error(`[API ERROR] DELETE ${targetUrl}:`, error);
+    throw error;
   }
 }

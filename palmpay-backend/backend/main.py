@@ -41,8 +41,8 @@ from backend.palm.matcher import PalmMatcher
 from backend.payments.razorpay_client import RazorpayMandateClient
 from backend.receipt import generate_receipt, mask_vpa
 from backend.schemas import (
-    AuthorizeResponse, CustomerStateResponse, IdentifyResponse, MandateApprovedRequest,
-    RegisterResponse, SetAmountRequest,
+    AuthorizeResponse, CustomerListItemResponse, CustomerStateResponse, CustomerUpdateRequest,
+    IdentifyResponse, MandateApprovedRequest, RegisterResponse, SetAmountRequest,
 )
 from dotenv import load_dotenv
 load_dotenv()
@@ -312,6 +312,128 @@ def get_customer_state(customer_id: int, db: Session = Depends(get_db)):
         consent_version=customer.consent_version,
         created_at=customer.created_at,
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin Customer Management API Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/customers", response_model=List[CustomerListItemResponse])
+def list_customers(db: Session = Depends(get_db)):
+    """List all registered customers for admin management UI. Excludes raw palm vector arrays."""
+    customers = db.query(Customer).order_by(Customer.created_at.desc()).all()
+    results = []
+    for c in customers:
+        results.append(
+            CustomerListItemResponse(
+                id=c.id,
+                name=c.name,
+                contact=c.contact,
+                email=c.email,
+                upi_vpa=c.upi_vpa,
+                masked_upi=mask_vpa(c.upi_vpa),
+                razorpay_customer_id=c.razorpay_customer_id,
+                mandate_order_id=c.mandate_order_id,
+                mandate_token_id=c.mandate_token_id,
+                mandate_approved=c.mandate_token_id is not None,
+                embedding_count=len(c.embeddings),
+                consent_given_at=c.consent_given_at,
+                consent_version=c.consent_version,
+                created_at=c.created_at,
+            )
+        )
+    return results
+
+
+@app.put("/customers/{customer_id}", response_model=CustomerListItemResponse)
+def update_customer(customer_id: int, req: CustomerUpdateRequest, db: Session = Depends(get_db)):
+    """Update editable details (name, contact, email, upi_vpa) for a registered customer."""
+    customer = db.query(Customer).get(customer_id)
+    if not customer:
+        raise HTTPException(404, f"Customer with ID {customer_id} not found")
+
+    # Validate name
+    clean_name = req.name.strip()
+    if not clean_name:
+        raise HTTPException(422, "Name cannot be empty")
+
+    # Validate phone format (10-digit)
+    clean_contact = req.contact.strip().replace(" ", "").replace("-", "")
+    if clean_contact.startswith("+91"):
+        clean_contact = clean_contact[3:]
+    if not clean_contact.isdigit() or len(clean_contact) != 10:
+        raise HTTPException(422, "Please enter a valid 10-digit Indian phone number (e.g. 9876543210)")
+
+    # Validate email format and domain
+    clean_email = req.email.strip().lower()
+    if "@" not in clean_email or "." not in clean_email.split("@")[-1]:
+        raise HTTPException(422, "Please enter a valid email address (e.g. name@example.com)")
+
+    # Validate UPI VPA
+    clean_upi = req.upi_vpa.strip().lower()
+    if clean_upi and ("@" not in clean_upi or len(clean_upi) < 3):
+        raise HTTPException(422, "Please enter a valid UPI VPA (e.g. name@upi)")
+
+    # Check for phone/email collision with OTHER customers
+    existing_phone = db.query(Customer).filter(Customer.contact == clean_contact, Customer.id != customer_id).first()
+    if existing_phone:
+        raise HTTPException(400, f"Phone number {clean_contact} is already registered to another customer")
+
+    existing_email = db.query(Customer).filter(Customer.email == clean_email, Customer.id != customer_id).first()
+    if existing_email:
+        raise HTTPException(400, f"Email address {clean_email} is already registered to another customer")
+
+    customer.name = clean_name
+    customer.contact = clean_contact
+    customer.email = clean_email
+    if clean_upi:
+        customer.upi_vpa = clean_upi
+
+    db.commit()
+    db.refresh(customer)
+
+    return CustomerListItemResponse(
+        id=customer.id,
+        name=customer.name,
+        contact=customer.contact,
+        email=customer.email,
+        upi_vpa=customer.upi_vpa,
+        masked_upi=mask_vpa(customer.upi_vpa),
+        razorpay_customer_id=customer.razorpay_customer_id,
+        mandate_order_id=customer.mandate_order_id,
+        mandate_token_id=customer.mandate_token_id,
+        mandate_approved=customer.mandate_token_id is not None,
+        embedding_count=len(customer.embeddings),
+        consent_given_at=customer.consent_given_at,
+        consent_version=customer.consent_version,
+        created_at=customer.created_at,
+    )
+
+
+@app.delete("/customers/{customer_id}")
+def delete_customer(customer_id: int, db: Session = Depends(get_db)):
+    """
+    Permanently delete a customer record and their biometric palm embeddings.
+    Retains transaction records for ledger integrity by unlinking customer_id (setting customer_id=None).
+    """
+    customer = db.query(Customer).get(customer_id)
+    if not customer:
+        raise HTTPException(404, f"Customer with ID {customer_id} not found")
+
+    # 1. Delete associated palm embeddings from SQLite DB
+    db.query(PalmEmbedding).filter_by(customer_id=customer_id).delete()
+
+    # 2. Unlink customer reference from past transactions to preserve audit ledger integrity
+    db.query(Transaction).filter_by(customer_id=customer_id).update({"customer_id": None})
+
+    # 3. Delete customer record
+    db.delete(customer)
+    db.commit()
+
+    # 4. Re-hydrate in-memory PalmMatcher to remove deleted palm vectors
+    matcher.load_existing_embeddings(db)
+
+    return {"ok": True, "message": f"Customer #{customer_id} and biometric embeddings permanently deleted"}
 
 
 @app.post("/webhooks/razorpay/mandate-approved")
