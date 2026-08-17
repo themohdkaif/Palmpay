@@ -94,17 +94,15 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-MATCH_THRESHOLD = float(os.environ.get("MATCH_THRESHOLD", "0.70"))
+MATCH_THRESHOLD = float(os.environ.get("MATCH_THRESHOLD", "0.65"))
+MIN_MARGIN = float(os.environ.get("MIN_MARGIN", "0.04"))
 AUTO_APPROVE_MANDATE = os.environ.get("AUTO_APPROVE_MANDATE", "true").lower() == "true"
 
 detector = PalmDetector(model_path=MODEL_PATH)
-# embedding_dim here only matters if load() below finds nothing and a
-# fresh embedder is fit later -- the loaded PCA (fit via scripts/fit_pca.py)
-# determines the real output dimension. Keep this in sync with that script.
-embedder = PalmEmbedder(embedding_dim=24)
+embedder = PalmEmbedder(embedding_dim=128, embedder_type="cnn")
 if os.path.exists(PCA_PATH):
     embedder.load(PCA_PATH)
-matcher = PalmMatcher(match_threshold=MATCH_THRESHOLD)
+matcher = PalmMatcher(match_threshold=MATCH_THRESHOLD, min_margin=MIN_MARGIN)
 
 razorpay_client = RazorpayMandateClient()  # reads RAZORPAY_KEY_ID / SECRET from env
 

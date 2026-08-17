@@ -82,7 +82,7 @@ def test_embed_and_match():
     embedder_hog = PalmEmbedder(embedding_dim=32, embedder_type="hog")
     embedder_hog.fit(enrollment_imgs)
 
-    matcher = PalmMatcher(match_threshold=0.5)
+    matcher = PalmMatcher(match_threshold=0.40, min_margin=0.05)
     for img, label in zip(enrollment_imgs, enrollment_labels):
         matcher.add(customer_id=label, embedding=embedder_hog.embed(img))
 
