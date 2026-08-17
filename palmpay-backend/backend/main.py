@@ -42,7 +42,7 @@ from backend.payments.razorpay_client import RazorpayMandateClient
 from backend.receipt import generate_receipt, mask_vpa
 from backend.schemas import (
     AuthorizeResponse, CustomerListItemResponse, CustomerStateResponse, CustomerUpdateRequest,
-    IdentifyResponse, MandateApprovedRequest, RegisterResponse, SetAmountRequest,
+    IdentifyResponse, MandateApprovedRequest, RegisterResponse, SetAmountRequest, StepUpVerifyRequest,
 )
 from dotenv import load_dotenv
 load_dotenv()

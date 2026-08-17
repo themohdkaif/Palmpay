@@ -42,27 +42,60 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setLanguage(nextLang);
   };
 
+  /**
+   * Format fallback title string from missing key path (e.g., 'scan.biometricTerminal' -> 'Biometric Terminal')
+   */
+  const formatKeyFallback = (keyPath: string): string => {
+    const lastKey = keyPath.split(".").pop() || keyPath;
+    return lastKey
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (str) => str.toUpperCase())
+      .trim();
+  };
+
   // Nested dot-notation key lookup helper (e.g. t('scan.statusPosition'))
   const t = (keyPath: string): string => {
+    if (!keyPath) return "";
     const keys = keyPath.split(".");
+    
+    // Primary language lookup
     let current: any = translations[language];
+    let foundPrimary = true;
     for (const k of keys) {
       if (current && current[k] !== undefined) {
         current = current[k];
       } else {
-        // Fallback to English dictionary if key missing
-        let fallback: any = en;
-        for (const fk of keys) {
-          if (fallback && fallback[fk] !== undefined) {
-            fallback = fallback[fk];
-          } else {
-            return keyPath;
-          }
-        }
-        return typeof fallback === "string" ? fallback : keyPath;
+        foundPrimary = false;
+        break;
       }
     }
-    return typeof current === "string" ? current : keyPath;
+
+    if (foundPrimary && typeof current === "string") {
+      return current;
+    }
+
+    // Fallback to English dictionary if key missing in target language
+    let fallback: any = en;
+    let foundFallback = true;
+    for (const fk of keys) {
+      if (fallback && fallback[fk] !== undefined) {
+        fallback = fallback[fk];
+      } else {
+        foundFallback = false;
+        break;
+      }
+    }
+
+    if (foundFallback && typeof fallback === "string") {
+      return fallback;
+    }
+
+    // Missing key in both target language and English fallback
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[i18n] Missing translation key for path: "${keyPath}"`);
+    }
+
+    return formatKeyFallback(keyPath);
   };
 
   return (
