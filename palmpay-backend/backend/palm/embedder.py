@@ -118,7 +118,16 @@ class CnnPalmEmbedder:
 
     def load(self, path: str) -> None:
         import joblib
-        self._pca = joblib.load(path)
+        try:
+            loaded = joblib.load(path)
+            if hasattr(loaded, "n_features_in_") and loaded.n_features_in_ != 1280:
+                print(f"[WARNING] Incompatible PCA model features ({loaded.n_features_in_} != 1280). Ignoring old PCA file at {path}.")
+                self._pca = None
+            else:
+                self._pca = loaded
+        except Exception as err:
+            print(f"[WARNING] Failed to load PCA model from {path}: {err}")
+            self._pca = None
 
 
 class HogPalmEmbedder:
