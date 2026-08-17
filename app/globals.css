@@ -1,0 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --ink: #0F1A14;
+    --paper: #F1ECDD;
+    --brass: #B08D46;
+    --brass-bright: #D4AF6A;
+    --vein: #7A2E2E;
+    --line: #3A4A3E;
+  }
+
+  body {
+    background-color: var(--ink);
+    color: #E2E8F0;
+    font-family: 'Inter', 'Noto Sans Devanagari', system-ui, -apple-system, sans-serif;
+  }
+
+  h1, h2, h3, h4, .font-serif-display {
+    font-family: 'Fraunces', 'Noto Sans Devanagari', serif;
+  }
+
+  code, pre, .font-mono-ledger {
+    font-family: 'IBM Plex Mono', 'Noto Sans Devanagari', monospace;
+  }
+}
+
+/* Custom Engraved Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #0F1A14;
+}
+::-webkit-scrollbar-thumb {
+  background: #3A4A3E;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B08D46;
+}
