@@ -3,7 +3,7 @@ Palm embedding extractor module supporting both CNN and HOG+PCA backbones.
 
 Features:
   1. Contrast Limited Adaptive Histogram Equalization (CLAHE) lighting normalization.
-  2. Pretrained MobileNetV2 Deep CNN feature extractor with 128-D projection head.
+  2. Pretrained MobileNetV2 Deep CNN feature extractor with fitted PCA subspace projection.
   3. Classical HOG+PCA embedder fallback for ablation study comparisons.
 """
 
@@ -43,8 +43,8 @@ def apply_clahe(aligned_bgr: np.ndarray) -> np.ndarray:
 class CnnPalmEmbedder:
     """
     Transfer-learning Deep CNN feature extractor based on pretrained MobileNetV2.
-    Extracts 1280-D bottleneck features, normalizes them, and projects to a 128-D
-    unit embedding vector.
+    Extracts 1280-D bottleneck features, normalizes them, and projects them onto a
+    fitted PCA subspace mapping 1280-D -> 128-D unit embedding vector.
     """
 
     def __init__(self, embedding_dim: int = 128):
@@ -57,18 +57,9 @@ class CnnPalmEmbedder:
         self.features = backbone.features.to(self.device)
         self.features.eval()
 
-        # Fixed projection head mapping 1280-D -> 128-D
-        # Deterministic orthogonal initialization for zero-shot metric embedding
-        torch.manual_seed(42)
-        self.projection = torch.nn.Linear(1280, embedding_dim, bias=False).to(self.device)
-        torch.nn.init.orthogonal_(self.projection.weight)
-        self.projection.eval()
+        self._pca: Optional[PCA] = None
 
-    def fit(self, aligned_images: List[np.ndarray]) -> None:
-        """CNN backbone uses pretrained MobileNetV2 weights; fit is a no-op pass-through."""
-        pass
-
-    def embed(self, aligned_bgr: np.ndarray) -> np.ndarray:
+    def _extract_1280d_features(self, aligned_bgr: np.ndarray) -> np.ndarray:
         # Step 1: Lighting Normalization via CLAHE
         normalized = apply_clahe(aligned_bgr)
         rgb = cv2.cvtColor(normalized, cv2.COLOR_BGR2RGB)
@@ -77,20 +68,57 @@ class CnnPalmEmbedder:
         if rgb.shape[:2] != (224, 224):
             rgb = cv2.resize(rgb, (224, 224), interpolation=cv2.INTER_AREA)
 
-        # Convert to FloatTensor normalized [0, 1] with ImageNet mean/std
+        # Convert to FloatTensor normalized [0, 1] with ImageNet mean/std (moved to self.device)
         tensor = torch.from_numpy(rgb.transpose(2, 0, 1)).float() / 255.0
-        mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-        std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
-        tensor = (tensor - mean) / std
-        tensor = tensor.unsqueeze(0).to(self.device)
+        mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1).to(self.device)
+        std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1).to(self.device)
+        tensor = (tensor.to(self.device) - mean) / std
+        tensor = tensor.unsqueeze(0)
 
         with torch.no_grad():
             feat = self.features(tensor)
             pooled = torch.nn.functional.adaptive_avg_pool2d(feat, (1, 1)).flatten(1)
-            proj = self.projection(pooled)[0].cpu().numpy().astype(np.float32)
+            return pooled[0].cpu().numpy().astype(np.float32)
 
-        norm = np.linalg.norm(proj)
-        return proj / norm if norm > 0 else proj
+    def fit(self, aligned_images: List[np.ndarray]) -> None:
+        """
+        Fit PCA projection mapping 1280-D MobileNetV2 features down to embedding_dim.
+        Pads image set with augmented variants if fewer images than embedding_dim.
+        """
+        if len(aligned_images) < self.embedding_dim:
+            from backend.palm.augment import augment_palm_image
+            padded = list(aligned_images)
+            n_needed = self.embedding_dim - len(aligned_images)
+            per_img = max(1, -(-n_needed // len(aligned_images)))
+            for i, img in enumerate(aligned_images):
+                padded.extend(augment_palm_image(img, n_variants=per_img, seed=i))
+            aligned_images = padded[:max(self.embedding_dim, len(padded))]
+
+        feats = np.stack([self._extract_1280d_features(img) for img in aligned_images])
+        self._pca = PCA(n_components=self.embedding_dim, whiten=True)
+        self._pca.fit(feats)
+
+    def embed(self, aligned_bgr: np.ndarray) -> np.ndarray:
+        feat = self._extract_1280d_features(aligned_bgr)
+        if self._pca is not None:
+            vec = self._pca.transform(feat.reshape(1, -1))[0]
+        else:
+            # Fallback projection if fit() hasn't been called yet
+            np.random.seed(42)
+            W = np.random.randn(len(feat), self.embedding_dim).astype(np.float32)
+            W /= np.linalg.norm(W, axis=0)
+            vec = feat @ W
+
+        norm = np.linalg.norm(vec)
+        return vec / norm if norm > 0 else vec
+
+    def save(self, path: str) -> None:
+        import joblib
+        joblib.dump(self._pca, path)
+
+    def load(self, path: str) -> None:
+        import joblib
+        self._pca = joblib.load(path)
 
 
 class HogPalmEmbedder:
@@ -118,17 +146,20 @@ class HogPalmEmbedder:
 
     def fit(self, aligned_images: List[np.ndarray]) -> None:
         if len(aligned_images) < self.embedding_dim:
-            raise ValueError(
-                f"Need at least {self.embedding_dim} enrollment images to fit "
-                f"a {self.embedding_dim}-D PCA; got {len(aligned_images)}."
-            )
+            from backend.palm.augment import augment_palm_image
+            padded = list(aligned_images)
+            n_needed = self.embedding_dim - len(aligned_images)
+            per_img = max(1, -(-n_needed // len(aligned_images)))
+            for i, img in enumerate(aligned_images):
+                padded.extend(augment_palm_image(img, n_variants=per_img, seed=i))
+            aligned_images = padded[:max(self.embedding_dim, len(padded))]
+
         raw = np.stack([self._raw_hog_features(img) for img in aligned_images])
         self._pca = PCA(n_components=self.embedding_dim, whiten=True)
         self._pca.fit(raw)
 
     def embed(self, aligned_bgr: np.ndarray) -> np.ndarray:
         if self._pca is None:
-            # Fallback identity projection if PCA not yet fitted
             raw = self._raw_hog_features(aligned_bgr)
             np.random.seed(42)
             proj_matrix = np.random.randn(len(raw), self.embedding_dim).astype(np.float32)

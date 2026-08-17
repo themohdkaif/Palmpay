@@ -28,6 +28,10 @@ def populate_and_evaluate():
     conn = sqlite3.connect("palmpay.db")
     cur = conn.cursor()
 
+    # Clear existing test records for clean benchmark populate
+    cur.execute("DELETE FROM palm_embeddings")
+    cur.execute("DELETE FROM customers")
+
     embedder = PalmEmbedder(embedding_dim=128, embedder_type="cnn")
 
     customers_data = [
