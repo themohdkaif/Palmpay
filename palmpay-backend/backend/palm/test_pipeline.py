@@ -79,16 +79,16 @@ def test_embed_and_match():
             enrollment_imgs.append(_synthetic_photo(seed=person_id, photo_variation=photo_i))
             enrollment_labels.append(person_id)
 
-    embedder = PalmEmbedder(embedding_dim=32)
-    embedder.fit(enrollment_imgs)
+    embedder_hog = PalmEmbedder(embedding_dim=32, embedder_type="hog")
+    embedder_hog.fit(enrollment_imgs)
 
     matcher = PalmMatcher(match_threshold=0.5)
     for img, label in zip(enrollment_imgs, enrollment_labels):
-        matcher.add(customer_id=label, embedding=embedder.embed(img))
+        matcher.add(customer_id=label, embedding=embedder_hog.embed(img))
 
     # A brand-new photo of person 2's palm should match person 2
     query_img = _synthetic_photo(seed=2, photo_variation=999)
-    query_emb = embedder.embed(query_img)
+    query_emb = embedder_hog.embed(query_img)
     matched_id, score = matcher.identify(query_emb)
     print(f"[INFO] query matched customer_id={matched_id} score={score:.3f}")
     assert matched_id == 2, f"expected customer 2, got {matched_id}"

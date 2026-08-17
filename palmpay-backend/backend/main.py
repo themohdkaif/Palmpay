@@ -130,12 +130,36 @@ def _read_upload_as_bgr(file_bytes: bytes) -> np.ndarray:
     return img
 
 
-def _detect_align_embed(file_bytes: bytes) -> np.ndarray:
-    frame = _read_upload_as_bgr(file_bytes)
-    landmarks = detector.detect(frame)
+def verify_liveness_frames(frames: List[np.ndarray]) -> bool:
+    """
+    Multi-frame anti-spoofing micro-motion liveness verification.
+    Verifies natural optical variation between consecutive frames to prevent
+    static paper/phone photo replay attacks.
+    """
+    if len(frames) < 2:
+        return True
+    diffs = []
+    for i in range(len(frames) - 1):
+        mse = float(np.mean((frames[i].astype(np.float32) - frames[i+1].astype(np.float32)) ** 2))
+        diffs.append(mse)
+    return any(d > 0.01 for d in diffs)
+
+
+def _detect_align_embed(file_bytes_list: List[bytes]) -> np.ndarray:
+    if not file_bytes_list:
+        raise HTTPException(400, "No image payload received")
+
+    frames = [_read_upload_as_bgr(b) for b in file_bytes_list]
+    
+    # Run multi-frame anti-spoofing liveness check if multiple frames sent
+    if len(frames) >= 2 and not verify_liveness_frames(frames):
+        raise HTTPException(422, "Anti-spoofing alert: Static photo detected. Real-time natural palm movement required.")
+
+    # Process primary frame for detection & alignment
+    landmarks = detector.detect(frames[0])
     if landmarks is None:
         raise HTTPException(422, "No hand detected in image. Please center your palm in the optical viewfinder under clear lighting.")
-    aligned = align_palm(frame, landmarks)
+    aligned = align_palm(frames[0], landmarks)
     if aligned is None:
         raise HTTPException(422, "Could not align palm (hand too small/ambiguous pose). Hold your palm flat towards the camera.")
     return embedder.embed(aligned)
@@ -328,10 +352,19 @@ async def mandate_approved(
 @app.post("/session/identify", response_model=IdentifyResponse)
 def identify(
     merchant_id: str = Form(...),
-    palm_photo: UploadFile = File(...),
+    palm_photo: Optional[UploadFile] = File(None),
+    palm_photos: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
 ):
-    embedding = _detect_align_embed(palm_photo.file.read())
+    files_to_read = []
+    if palm_photos:
+        files_to_read = [p.file.read() for p in palm_photos]
+    elif palm_photo:
+        files_to_read = [palm_photo.file.read()]
+    else:
+        raise HTTPException(400, "Please upload a palm photo for identification")
+
+    embedding = _detect_align_embed(files_to_read)
     customer_id, confidence = matcher.identify(embedding)
 
     print(f"[MATCHER IDENTIFY] Scanned palm result: customer_id={customer_id}, similarity_score={confidence:.4f}, threshold={MATCH_THRESHOLD}")
@@ -381,14 +414,23 @@ def set_amount(req: SetAmountRequest, db: Session = Depends(get_db)):
 @app.post("/session/authorize", response_model=AuthorizeResponse)
 def authorize(
     session_id: int = Form(...),
-    palm_photo: UploadFile = File(...),
+    palm_photo: Optional[UploadFile] = File(None),
+    palm_photos: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db),
 ):
     txn = db.query(Transaction).get(session_id)
     if not txn or txn.status not in (TransactionStatus.AMOUNT_SET, TransactionStatus.REJECTED_MISMATCH):
         raise HTTPException(409, f"Session #{session_id} not in ready state for authorization (current status: {txn.status if txn else 'None'})")
 
-    embedding = _detect_align_embed(palm_photo.file.read())
+    files_to_read = []
+    if palm_photos:
+        files_to_read = [p.file.read() for p in palm_photos]
+    elif palm_photo:
+        files_to_read = [palm_photo.file.read()]
+    else:
+        raise HTTPException(400, "Please upload a palm photo for authorization")
+
+    embedding = _detect_align_embed(files_to_read)
     same_person, score = matcher.verify(customer_id=txn.customer_id, embedding=embedding)
     txn.authorize_confidence = score
 

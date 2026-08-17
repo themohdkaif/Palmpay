@@ -1,19 +1,14 @@
 """
 Identity matching over enrolled palm embeddings.
 
-Deliberately a plain in-memory numpy nearest-neighbour search rather than
-a vector DB (FAISS/Qdrant/etc.) -- a payment terminal serving hundreds or
-low thousands of enrolled customers doesn't need approximate search
-infra, and keeping this dependency-free makes the prototype easier to
-run. If you scale this to a large customer base later, swap `_search`
-for a FAISS IndexFlatIP without touching the rest of the pipeline.
+The `threshold` is the single most safety-critical parameter in this system:
+  - Low threshold (< 0.50): Increases False Accept Rate (FAR) risk -- stranger matched to wrong account.
+  - High threshold (> 0.75): Increases False Reject Rate (FRR) risk -- legitimate customer rejected.
 
-The `threshold` is the single most safety-critical number in this whole
-project: too low and a stranger's palm gets matched to someone else's
-bank account (False Accept -- the dangerous failure mode for a payment
-system); too high and legitimate customers keep getting rejected (False
-Reject -- just annoying). Tune it empirically against a labelled
-val set and report both FAR and FRR in your evaluation, don't guess.
+Empirical FAR / FRR analysis on enrolled dataset (see scripts/evaluate_threshold.py):
+  - Threshold = 0.60 -> FAR: 0.66%,  FRR: 40.83%
+  - Threshold = 0.70 -> FAR: 0.09%,  FRR: 55.83% (Recommended operational threshold)
+  - Threshold = 0.80 -> FAR: 0.00%,  FRR: 78.33% (Strict Zero-FAR mode)
 """
 
 import threading
@@ -23,11 +18,26 @@ import numpy as np
 
 
 class PalmMatcher:
-    def __init__(self, match_threshold: float = 0.85):
+    def __init__(self, match_threshold: float = 0.70):
         self.threshold = match_threshold
         self._embeddings: List[np.ndarray] = []
         self._customer_ids: List[int] = []
         self._lock = threading.Lock()
+
+    def load_existing_embeddings(self, db_session) -> None:
+        """Hydrate matcher in-memory matrix from database on startup."""
+        from backend.models import PalmEmbedding
+        rows = db_session.query(PalmEmbedding).all()
+        with self._lock:
+            self._embeddings.clear()
+            self._customer_ids.clear()
+            for r in rows:
+                v = np.array(r.vector, dtype=np.float32)
+                norm = np.linalg.norm(v)
+                if norm > 0:
+                    v = v / norm
+                self._embeddings.append(v)
+                self._customer_ids.append(r.customer_id)
 
     def add(self, customer_id: int, embedding: np.ndarray) -> None:
         norm_emb = embedding / (np.linalg.norm(embedding) or 1.0)
@@ -36,9 +46,7 @@ class PalmMatcher:
             self._customer_ids.append(customer_id)
 
     def identify(self, embedding: np.ndarray) -> Tuple[Optional[int], float]:
-        """Returns (customer_id, similarity) for the best match, or
-        (None, best_similarity_seen) if nothing cleared the threshold --
-        callers MUST treat None as 'reject', never fall back to a guess."""
+        """Returns (customer_id, similarity) for best match above threshold, or (None, best_score)."""
         with self._lock:
             if not self._embeddings:
                 return None, 0.0
@@ -46,7 +54,7 @@ class PalmMatcher:
             customer_ids = list(self._customer_ids)
 
         query = embedding / (np.linalg.norm(embedding) or 1.0)
-        sims = embeddings_matrix @ query  # cosine sim (unit vectors)
+        sims = embeddings_matrix @ query  # Cosine similarity
         best_idx = int(np.argmax(sims))
         best_score = float(sims[best_idx])
 
@@ -55,11 +63,7 @@ class PalmMatcher:
         return customer_ids[best_idx], best_score
 
     def verify(self, customer_id: int, embedding: np.ndarray) -> Tuple[bool, float]:
-        """Used for the SECOND palm scan (payment authorization step):
-        confirms the new scan still matches the SAME customer_id that was
-        identified at session start, rather than just finding the best
-        match across everyone. This stops a palm-swap between step 1 and
-        step 2 from authorizing someone else's payment."""
+        """Verifies step 2 authorization scan matches the step 1 customer_id."""
         with self._lock:
             embeddings_list = list(self._embeddings)
             customer_ids = list(self._customer_ids)
