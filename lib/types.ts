@@ -1,5 +1,8 @@
 export interface IdentifyResponse {
   matched: boolean;
+  status?: "matched" | "borderline" | "unmatched" | string;
+  requires_step_up?: boolean;
+  step_up_prompt?: string;
   customer_id?: number;
   name?: string;
   masked_upi?: string;
@@ -9,7 +12,9 @@ export interface IdentifyResponse {
 }
 
 export interface AuthorizeResponse {
-  status: "paid" | "rejected_mismatch" | "failed" | string;
+  status: "paid" | "borderline" | "rejected_mismatch" | "failed" | string;
+  requires_step_up?: boolean;
+  step_up_prompt?: string;
   razorpay_payment_id?: string;
   receipt_url?: string;
   reason?: string;
@@ -26,6 +31,7 @@ export interface RegisterFormData {
   contact: string;
   email: string;
   upi_vpa: string;
+  step_up_pin?: string;
   consent_given_at?: string;
   consent_version?: string;
 }
@@ -51,6 +57,7 @@ export type PaymentFlowStatus =
   | "idle"
   | "identifying"
   | "identified"
+  | "borderline_step_up"
   | "unrecognized"
   | "registering"
   | "setting_amount"

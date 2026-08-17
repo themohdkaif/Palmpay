@@ -51,19 +51,20 @@ class RegisterResponse(BaseModel):
 
 
 class MandateApprovedRequest(BaseModel):
-    """Called by your Razorpay webhook handler once the customer approves
-    the mandate in their UPI app and a token_id is issued."""
     customer_id: int
     token_id: str
 
 
 class IdentifyResponse(BaseModel):
     matched: bool
+    status: str = "matched"  # "matched" | "borderline" | "unmatched"
+    requires_step_up: bool = False
+    step_up_prompt: Optional[str] = None
     customer_id: Optional[int] = None
     name: Optional[str] = None
     masked_upi: Optional[str] = None
     confidence: float
-    session_id: Optional[int] = None  # == transaction id, used for the next steps
+    session_id: Optional[int] = None
 
 
 class SetAmountRequest(BaseModel):
@@ -72,7 +73,14 @@ class SetAmountRequest(BaseModel):
 
 
 class AuthorizeResponse(BaseModel):
-    status: str
+    status: str  # "paid" | "borderline" | "rejected_mismatch" | "failed"
+    requires_step_up: bool = False
+    step_up_prompt: Optional[str] = None
     razorpay_payment_id: Optional[str] = None
     receipt_url: Optional[str] = None
     reason: Optional[str] = None
+
+
+class StepUpVerifyRequest(BaseModel):
+    session_id: int
+    secret: str  # 4-digit security PIN or last 4 digits of phone number

@@ -26,6 +26,7 @@ class Customer(Base):
     mandate_order_id = Column(String, nullable=True)
     mandate_token_id = Column(String, nullable=True)   # set once mandate is approved
     mandate_limit_paise = Column(Integer, default=10000)  # Rs 100 default cap
+    step_up_pin = Column(String, nullable=True)  # Optional 4-digit PIN for borderline step-up verification
 
     consent_given_at = Column(DateTime, default=datetime.utcnow)
     consent_version = Column(String, default="v1.0_DPDP_2023")

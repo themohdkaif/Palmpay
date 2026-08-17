@@ -62,7 +62,7 @@ class PalmDetector:
         return [Landmark(lm.x, lm.y) for lm in result.hand_landmarks[0]]
 
 
-def align_palm(frame_bgr: np.ndarray, landmarks: List[Landmark], out_size: int = 224) -> Optional[np.ndarray]:
+def align_palm(frame_bgr: np.ndarray, landmarks: List[Landmark], out_size: int = 384) -> Optional[np.ndarray]:
     """
     Crop + rotate + scale the palm region to a canonical `out_size` x
     `out_size` square, using three stable landmarks:

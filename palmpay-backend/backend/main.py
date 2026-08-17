@@ -180,6 +180,7 @@ def register_customer(
     contact: str = Form(...),
     email: str = Form(...),
     upi_vpa: str = Form(...),
+    step_up_pin: Optional[str] = Form(None),
     consent_given_at: Optional[str] = Form(None),
     consent_version: Optional[str] = Form("v1.0_DPDP_2023"),
     palm_photos: List[UploadFile] = File(
@@ -255,6 +256,7 @@ def register_customer(
             contact=contact_clean,
             email=email_clean,
             upi_vpa=upi_vpa_clean,
+            step_up_pin=step_up_pin.strip() if step_up_pin else None,
             consent_given_at=parsed_consent_at,
             consent_version=consent_version or "v1.0_DPDP_2023"
         )
@@ -492,12 +494,12 @@ def identify(
         raise HTTPException(400, "Please upload a palm photo for identification")
 
     embedding = _detect_align_embed(files_to_read)
-    customer_id, confidence = matcher.identify(embedding)
+    match_status, customer_id, confidence, margin = matcher.identify(embedding)
 
-    print(f"[MATCHER IDENTIFY] Scanned palm result: customer_id={customer_id}, similarity_score={confidence:.4f}, threshold={MATCH_THRESHOLD}")
+    print(f"[MATCHER IDENTIFY] status={match_status}, customer_id={customer_id}, similarity={confidence:.4f}, margin={margin:.4f}")
 
-    if customer_id is None:
-        return IdentifyResponse(matched=False, confidence=confidence)
+    if match_status == "reject" or customer_id is None:
+        return IdentifyResponse(matched=False, status="unmatched", confidence=confidence)
 
     customer = db.query(Customer).get(customer_id)
     if customer.mandate_token_id is None:
@@ -513,8 +515,23 @@ def identify(
     db.commit()
     db.refresh(txn)
 
+    if match_status == "borderline":
+        return IdentifyResponse(
+            matched=True,
+            status="borderline",
+            requires_step_up=True,
+            step_up_prompt="Borderline match detected. Please enter your 4-digit Security PIN or last 4 digits of registered phone number.",
+            customer_id=customer.id,
+            name=customer.name,
+            masked_upi=mask_vpa(customer.upi_vpa),
+            confidence=confidence,
+            session_id=txn.id,
+        )
+
     return IdentifyResponse(
         matched=True,
+        status="matched",
+        requires_step_up=False,
         customer_id=customer.id,
         name=customer.name,
         masked_upi=mask_vpa(customer.upi_vpa),
@@ -558,15 +575,23 @@ def authorize(
         raise HTTPException(400, "Please upload a palm photo for authorization")
 
     embedding = _detect_align_embed(files_to_read)
-    same_person, score = matcher.verify(customer_id=txn.customer_id, embedding=embedding)
+    match_status, score, margin = matcher.verify(customer_id=txn.customer_id, embedding=embedding)
     txn.authorize_confidence = score
 
-    print(f"[MATCHER VERIFY] session_id={session_id}, customer_id={txn.customer_id}, similarity_score={score:.4f}, same_person={same_person}")
+    print(f"[MATCHER VERIFY] session_id={session_id}, customer_id={txn.customer_id}, status={match_status}, similarity={score:.4f}, margin={margin:.4f}")
 
-    if not same_person:
+    if match_status == "reject":
         txn.status = TransactionStatus.REJECTED_MISMATCH
         db.commit()
         return AuthorizeResponse(status="rejected_mismatch", reason=f"Palm did not match identified customer (confidence score: {score:.2f})")
+
+    if match_status == "borderline":
+        return AuthorizeResponse(
+            status="borderline",
+            requires_step_up=True,
+            step_up_prompt="Borderline authorization scan detected. Please confirm your 4-digit Security PIN or last 4 digits of phone number.",
+            reason="Borderline biometric confidence margin. Secondary authentication required."
+        )
 
     customer = db.query(Customer).get(txn.customer_id)
     try:
@@ -598,9 +623,73 @@ def authorize(
 
     return AuthorizeResponse(
         status="paid",
+        requires_step_up=False,
         razorpay_payment_id=payment["id"],
         receipt_url=f"/receipts/{txn.id}",
     )
+
+
+@app.post("/session/step-up-verify")
+def step_up_verify(
+    req: StepUpVerifyRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Step-up verification for borderline biometric matches.
+    Validates user secret against step_up_pin or last 4 digits of contact phone.
+    """
+    from backend.schemas import StepUpVerifyRequest
+    txn = db.query(Transaction).get(req.session_id)
+    if not txn or not txn.customer_id:
+        raise HTTPException(404, f"Transaction session #{req.session_id} not found")
+
+    customer = db.query(Customer).get(txn.customer_id)
+    if not customer:
+        raise HTTPException(404, "Customer record not found")
+
+    secret_clean = req.secret.strip()
+    valid_pin = bool(customer.step_up_pin and secret_clean == customer.step_up_pin)
+    valid_phone = bool(customer.contact and len(customer.contact) >= 4 and secret_clean == customer.contact[-4:])
+
+    if not (valid_pin or valid_phone):
+        raise HTTPException(401, "Incorrect security PIN or phone verification code. Secondary confirmation failed.")
+
+    if txn.status in (TransactionStatus.AMOUNT_SET, TransactionStatus.REJECTED_MISMATCH):
+        try:
+            payment = razorpay_client.charge_with_token(
+                token_id=customer.mandate_token_id,
+                razorpay_customer_id=customer.razorpay_customer_id,
+                amount_rupees=txn.amount_rupees,
+                mandate_limit_paise=customer.mandate_limit_paise,
+            )
+        except Exception as e:
+            txn.status = TransactionStatus.FAILED
+            db.commit()
+            return AuthorizeResponse(status="failed", reason=str(e))
+
+        txn.status = TransactionStatus.PAID
+        txn.razorpay_payment_id = payment["id"]
+
+        receipt_path = generate_receipt(
+            out_dir=RECEIPTS_DIR,
+            transaction_id=txn.id,
+            customer_name=customer.name,
+            masked_upi=mask_vpa(customer.upi_vpa),
+            amount_rupees=txn.amount_rupees,
+            merchant_id=txn.merchant_id,
+            razorpay_payment_id=payment["id"],
+        )
+        txn.receipt_path = receipt_path
+        db.commit()
+
+        return AuthorizeResponse(
+            status="paid",
+            requires_step_up=False,
+            razorpay_payment_id=payment["id"],
+            receipt_url=f"/receipts/{txn.id}",
+        )
+
+    return {"ok": True, "status": "confirmed", "customer_id": customer.id, "name": customer.name}
 
 
 @app.get("/receipts/{transaction_id}")
