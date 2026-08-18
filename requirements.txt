@@ -1,0 +1,39 @@
+# PalmPay Frontend Development Requirements & Package Manifest
+# ------------------------------------------------------------------
+# Note: For Node.js / Next.js projects, dependencies are managed via npm / package.json.
+# To install all dependencies in VSCode Terminal, run:
+#     npm install
+# ------------------------------------------------------------------
+
+# Node.js Environment Requirement:
+# Node.js >= 18.17.0 (Recommended: Node.js 20 LTS)
+# npm >= 9.0.0
+
+# Core Framework & UI Engine
+next==14.2.15
+react==18.3.1
+react-dom==18.3.1
+typescript==5.6.3
+
+# Animations, Icons & Styling
+gsap==3.12.5
+@gsap/react==2.1.1
+lucide-react==0.453.0
+tailwindcss==3.4.14
+postcss==8.4.47
+autoprefixer==10.4.20
+clsx==2.1.1
+tailwind-merge==2.5.4
+canvas-confetti==1.9.3
+
+# State Management & Optical Camera Capture
+zustand==4.5.5
+react-webcam==7.2.0
+
+# Development Tooling & Type Definitions
+eslint==8.57.1
+eslint-config-next==14.2.15
+@types/node==20.17.0
+@types/react==18.3.11
+@types/react-dom==18.3.1
+@types/canvas-confetti==1.9.0
