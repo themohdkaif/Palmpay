@@ -61,7 +61,7 @@ export function useHandDetection({
     }
   }, [isRemoteTerminal, remoteHandState, remoteCaptureFrames, onAutoTriggerCapture]);
 
-  // 1. WASM HandLandmarker Model Initialization (for local fallback mode)
+  // 1. WASM HandLandmarker Model Initialization (with automatic GPU -> CPU fallback for Raspberry Pi / Low-End WebGL)
   useEffect(() => {
     if (isRemoteTerminal) {
       setIsDetectorLoading(false);
@@ -77,22 +77,38 @@ export function useHandDetection({
         );
         if (!isMounted) return;
 
-        const landmarker = await HandLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numHands: 1,
-        });
+        let landmarker: HandLandmarker | null = null;
+
+        // Try GPU delegate first; fallback to CPU delegate if Raspberry Pi / browser GPU delegate fails
+        try {
+          landmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numHands: 1,
+          });
+        } catch (gpuErr) {
+          console.warn("[MediaPipe WASM] GPU delegate unsupported or failed. Falling back to CPU delegate:", gpuErr);
+          landmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+              delegate: "CPU",
+            },
+            runningMode: "VIDEO",
+            numHands: 1,
+          });
+        }
 
         if (isMounted) {
           handLandmarkerRef.current = landmarker;
           setIsDetectorLoading(false);
         }
       } catch (err) {
-        console.warn("HandLandmarker WASM load fallback to manual mode:", err);
+        console.warn("[MediaPipe WASM] HandLandmarker load fallback to manual mode:", err);
         if (isMounted) setIsDetectorLoading(false);
       }
     }
