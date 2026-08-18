@@ -59,7 +59,9 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose, o
 
   const handleConfirmConsent = () => {
     if (!consentChecked) return;
-    const nowIso = new Date().toISOString();
+    // Temporary workaround for backend Python 3.10 datetime.fromisoformat parsing: replace trailing 'Z' with '+00:00'
+    // Note: Can be removed once backend is updated or running on Python 3.11+
+    const nowIso = new Date().toISOString().replace("Z", "+00:00");
     setConsentTimestamp(nowIso);
     setStep("capture");
   };
@@ -82,7 +84,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose, o
       const formattedData: RegisterFormData = {
         ...formData,
         contact: cleanPhone.startsWith("91") ? `+${cleanPhone}` : `+91${cleanPhone}`,
-        consent_given_at: consentTimestamp || new Date().toISOString(),
+        consent_given_at: (consentTimestamp || new Date().toISOString()).replace("Z", "+00:00"),
         consent_version: "v1.0_DPDP_2023",
       };
 

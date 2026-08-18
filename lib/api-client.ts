@@ -251,7 +251,10 @@ export async function registerCustomer(
     payload.append("step_up_pin", formData.step_up_pin);
   }
   if (formData.consent_given_at) {
-    payload.append("consent_given_at", formData.consent_given_at);
+    // Workaround for backend Python 3.10 datetime.fromisoformat parsing: replace trailing 'Z' with '+00:00'
+    // Note: This comment & workaround can be removed once backend is updated or running on Python 3.11+
+    const formattedConsentAt = formData.consent_given_at.replace("Z", "+00:00");
+    payload.append("consent_given_at", formattedConsentAt);
   }
   if (formData.consent_version) {
     payload.append("consent_version", formData.consent_version);
