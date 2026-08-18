@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import Webcam from "react-webcam";
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
+import { usePalmPayStore } from "@/lib/store";
 
 export interface UseHandDetectionOptions {
   webcamRef: React.RefObject<Webcam>;
@@ -18,6 +19,7 @@ export interface UseHandDetectionReturn {
   detectionFeedback: string;
   holdProgress: number;
   resetDetection: () => void;
+  isRemoteTerminal: boolean;
 }
 
 export function useHandDetection({
@@ -29,6 +31,13 @@ export function useHandDetection({
   holdDurationMs = 700,
   detectionIntervalMs = 180,
 }: UseHandDetectionOptions): UseHandDetectionReturn {
+  // Remote Terminal State from Zustand Store
+  const pairedTerminalId = usePalmPayStore((s) => s.pairedTerminalId);
+  const remoteHandState = usePalmPayStore((s) => s.remoteHandState);
+  const remoteFeedback = usePalmPayStore((s) => s.remoteFeedback);
+  const remoteHoldProgress = usePalmPayStore((s) => s.remoteHoldProgress);
+  const remoteCaptureFrames = usePalmPayStore((s) => s.remoteCaptureFrames);
+
   const [isDetectorLoading, setIsDetectorLoading] = useState<boolean>(true);
   const [handState, setHandState] = useState<"none" | "positioning" | "holding" | "captured">("none");
   const [detectionFeedback, setDetectionFeedback] = useState<string>("");
@@ -40,8 +49,25 @@ export function useHandDetection({
   const holdStartTimeRef = useRef<number | null>(null);
   const isTriggeredRef = useRef<boolean>(false);
 
-  // 1. WASM HandLandmarker Model Initialization
+  const isRemoteTerminal = Boolean(pairedTerminalId);
+
+  // Trigger auto capture when remote terminal signals `captured` or sends multi-frame payload
   useEffect(() => {
+    if (isRemoteTerminal && (remoteHandState === "captured" || (remoteCaptureFrames && remoteCaptureFrames.length > 0))) {
+      if (!isTriggeredRef.current) {
+        isTriggeredRef.current = true;
+        onAutoTriggerCapture();
+      }
+    }
+  }, [isRemoteTerminal, remoteHandState, remoteCaptureFrames, onAutoTriggerCapture]);
+
+  // 1. WASM HandLandmarker Model Initialization (for local fallback mode)
+  useEffect(() => {
+    if (isRemoteTerminal) {
+      setIsDetectorLoading(false);
+      return;
+    }
+
     let isMounted = true;
 
     async function initLandmarker() {
@@ -82,7 +108,7 @@ export function useHandDetection({
         handLandmarkerRef.current = null;
       }
     };
-  }, []);
+  }, [isRemoteTerminal]);
 
   // Reset trigger state when scan completes
   useEffect(() => {
@@ -99,9 +125,9 @@ export function useHandDetection({
     setDetectionFeedback("");
   }, []);
 
-  // 2. Real-Time Detection Loop
+  // 2. Real-Time Local Detection Loop (Skipped if paired to Remote Terminal)
   useEffect(() => {
-    if (isScanning || isFailed || cameraError || isDetectorLoading) {
+    if (isRemoteTerminal || isScanning || isFailed || cameraError || isDetectorLoading) {
       setHoldProgress(0);
       holdStartTimeRef.current = null;
       return;
@@ -193,6 +219,7 @@ export function useHandDetection({
       }
     };
   }, [
+    isRemoteTerminal,
     isScanning,
     isFailed,
     cameraError,
@@ -205,9 +232,10 @@ export function useHandDetection({
 
   return {
     isDetectorLoading,
-    handState,
-    detectionFeedback,
-    holdProgress,
+    handState: isRemoteTerminal ? remoteHandState : handState,
+    detectionFeedback: isRemoteTerminal ? remoteFeedback : detectionFeedback,
+    holdProgress: isRemoteTerminal ? remoteHoldProgress : holdProgress,
     resetDetection,
+    isRemoteTerminal,
   };
 }
