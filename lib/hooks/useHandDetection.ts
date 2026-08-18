@@ -11,6 +11,7 @@ export interface UseHandDetectionOptions {
   onAutoTriggerCapture: () => void;
   holdDurationMs?: number;
   detectionIntervalMs?: number;
+  preferredDelegate?: "GPU" | "CPU";
 }
 
 export interface UseHandDetectionReturn {
@@ -29,7 +30,8 @@ export function useHandDetection({
   cameraError,
   onAutoTriggerCapture,
   holdDurationMs = 700,
-  detectionIntervalMs = 180,
+  detectionIntervalMs = Number(process.env.NEXT_PUBLIC_DETECTION_INTERVAL_MS) || 180,
+  preferredDelegate = (process.env.NEXT_PUBLIC_MEDIAPIPE_DELEGATE as "GPU" | "CPU") || "GPU",
 }: UseHandDetectionOptions): UseHandDetectionReturn {
   // Remote Terminal State from Zustand Store
   const pairedTerminalId = usePalmPayStore((s) => s.pairedTerminalId);
@@ -61,7 +63,7 @@ export function useHandDetection({
     }
   }, [isRemoteTerminal, remoteHandState, remoteCaptureFrames, onAutoTriggerCapture]);
 
-  // 1. WASM HandLandmarker Model Initialization (with automatic GPU -> CPU fallback for Raspberry Pi / Low-End WebGL)
+  // 1. WASM HandLandmarker Model Initialization (Configurable GPU/CPU with automatic Fallback for Pi/Low-End WebGL)
   useEffect(() => {
     if (isRemoteTerminal) {
       setIsDetectorLoading(false);
@@ -79,19 +81,32 @@ export function useHandDetection({
 
         let landmarker: HandLandmarker | null = null;
 
-        // Try GPU delegate first; fallback to CPU delegate if Raspberry Pi / browser GPU delegate fails
-        try {
-          landmarker = await HandLandmarker.createFromOptions(vision, {
-            baseOptions: {
-              modelAssetPath:
-                "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-              delegate: "GPU",
-            },
-            runningMode: "VIDEO",
-            numHands: 1,
-          });
-        } catch (gpuErr) {
-          console.warn("[MediaPipe WASM] GPU delegate unsupported or failed. Falling back to CPU delegate:", gpuErr);
+        if (preferredDelegate === "GPU") {
+          try {
+            landmarker = await HandLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath:
+                  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                delegate: "GPU",
+              },
+              runningMode: "VIDEO",
+              numHands: 1,
+            });
+            console.log("[MediaPipe WASM] HandLandmarker initialized using GPU delegate.");
+          } catch (gpuErr) {
+            console.warn("[MediaPipe WASM] GPU delegate unsupported on this hardware/browser. Retrying with CPU delegate...", gpuErr);
+            landmarker = await HandLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath:
+                  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                delegate: "CPU",
+              },
+              runningMode: "VIDEO",
+              numHands: 1,
+            });
+            console.log("[MediaPipe WASM] HandLandmarker initialized using CPU delegate fallback.");
+          }
+        } else {
           landmarker = await HandLandmarker.createFromOptions(vision, {
             baseOptions: {
               modelAssetPath:
@@ -101,6 +116,7 @@ export function useHandDetection({
             runningMode: "VIDEO",
             numHands: 1,
           });
+          console.log("[MediaPipe WASM] HandLandmarker initialized using configured CPU delegate.");
         }
 
         if (isMounted) {
@@ -108,7 +124,7 @@ export function useHandDetection({
           setIsDetectorLoading(false);
         }
       } catch (err) {
-        console.warn("[MediaPipe WASM] HandLandmarker load fallback to manual mode:", err);
+        console.warn("[MediaPipe WASM] HandLandmarker load fallback to manual trigger mode:", err);
         if (isMounted) setIsDetectorLoading(false);
       }
     }
@@ -124,7 +140,7 @@ export function useHandDetection({
         handLandmarkerRef.current = null;
       }
     };
-  }, [isRemoteTerminal]);
+  }, [isRemoteTerminal, preferredDelegate]);
 
   // Reset trigger state when scan completes
   useEffect(() => {

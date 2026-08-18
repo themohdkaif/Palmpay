@@ -183,5 +183,39 @@ npm run dev
 - [x] **Merchant Passbook Ledger**: Real-time transaction history page fetching directly from backend SQLite DB (`GET /transactions`).
 - [x] **Cryptographic PDF & QR Receipt**: Dynamic ReportLab PDF generation with embedded verification QR code seal.
 - [x] **Biometric Trust & About Panel**: Transparent architectural disclosure explaining HOG+PCA vector mathematics and DPDP compliance.
-# Paypalm
-# Paypalm
+---
+
+## 9. Raspberry Pi Hardware Setup & Browser Configuration
+
+### Hardware & OS Requirements
+- **Hardware**: Raspberry Pi 4B (4GB/8GB RAM recommended) or Raspberry Pi 5.
+- **Camera Module**: OV5647 5MP / Sony IMX219 8MP CSI camera module, or standard USB V4L2 Webcam.
+- **OS**: Raspberry Pi OS (64-bit ARM64) with Desktop environment.
+
+### 1. Enable Camera Interface
+Run raspi-config on the Raspberry Pi terminal to enable legacy/CSI camera access:
+```bash
+sudo raspi-config
+# Navigate to: 3 Interface Options -> I1 Legacy Camera -> Enable -> Reboot
+```
+
+### 2. Install Node.js 20 LTS (ARM64)
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+### 3. Chromium Web Browser Configuration
+Launch Chromium on the Raspberry Pi with WebGL & Camera permissions enabled:
+- Open Chromium: `chromium-browser --enable-gpu-rasterization --ignore-gpu-blocklist http://localhost:3000`
+- Grant camera permissions when prompted on the `/scan` page.
+
+### 4. Optional Raspberry Pi Environment Performance Tuning
+If running standalone MediaPipe WASM hand detection on low-power Pi 4B hardware, you can tune the detection interval and delegate in `.env.local`:
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_DETECTION_INTERVAL_MS=250
+NEXT_PUBLIC_MEDIAPIPE_DELEGATE=GPU
+```
+*Note: If GPU delegate is unsupported by Chromium on ARM64 WebGL, the frontend automatically falls back to CPU delegate without crashing.*
+

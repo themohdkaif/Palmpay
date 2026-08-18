@@ -207,7 +207,7 @@ export const ScanFrame: React.FC<ScanFrameProps> = ({
             screenshotFormat="image/jpeg"
             screenshotQuality={0.95}
             videoConstraints={{
-              facingMode: "user",
+              facingMode: { ideal: "user" },
               width: { ideal: 1280 },
               height: { ideal: 720 },
             }}

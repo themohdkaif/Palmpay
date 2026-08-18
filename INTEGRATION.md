@@ -1,48 +1,50 @@
-# PalmPay Frontend Integration Specification & Backend API Contract
+# PalmPay Frontend Integration & Verified Backend API Contract
 
-> **Notice for Developers & Backend Implementers**
+> **Local Integration Status: Verified & Live**
 >
-> The PalmPay frontend application is structured as a clean, decoupled Next.js 14 web application. No local backend service is currently running in this branch.
+> The PalmPay frontend application (Next.js 14 on `http://localhost:3000`) is fully integrated and running against the local Python/FastAPI backend (`http://localhost:8000`) cloned from `GULSHANKUMAR6079/palmpe`.
 >
-> **Full Reference Implementation Preserved**: The complete Python/FastAPI backend (including the MediaPipe hand landmarker, CLAHE texture normalization, MobileNetV2 PCA 128-D vector embedder, dual-margin matcher, SQLite vault, Razorpay Autopay client, PDF receipt generator, WebSocket relay hub, and standalone Raspberry Pi client) is safely preserved on the git branch:
+> **Reference Backup Branch**: The frontend-only state before backend integration is preserved locally on git branch:
 > ```bash
-> git checkout backup-full-stack-before-split
+> git checkout backup-frontend-only-before-integration
 > ```
 
 ---
 
-## 1. Backend Configuration
+## 1. Local Environment Configuration
 
-Set the backend API base URL in `.env.local` (or environment variables):
+- **Frontend App**: `http://localhost:3000` (Next.js 14 dev server)
+- **Backend API Base**: `http://localhost:8000` (FastAPI + Uvicorn server in `backend/`)
+- **WebSocket Relay**: `ws://localhost:8000/ws/session/{pairing_token}`
+- **Database**: `backend/palmpay.db` (SQLite + SQLAlchemy)
 
+Configuration set in `.env.local` / environment:
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-The frontend uses `NEXT_PUBLIC_API_URL` as the base URL for HTTP endpoints and derives `ws://` / `wss://` URLs for WebSocket sessions.
-
 ---
 
-## 2. HTTP REST API Contract
+## 2. Verified HTTP REST API Contract
 
-The frontend calls the following endpoints defined in [`lib/api-client.ts`](file:///Users/mohdkaif/Desktop/Payment/lib/api-client.ts) and [`lib/types.ts`](file:///Users/mohdkaif/Desktop/Payment/lib/types.ts):
+All endpoints below have been verified against the running backend instance:
 
 ### 2.1 Customer Registration & Autopay Mandate Setup
 - **Endpoint**: `POST /customers/register`
 - **Content-Type**: `multipart/form-data`
-- **Request Fields**:
-  - `name` (string, required): Customer full name.
-  - `contact` (string, required): Phone number (+91 10-digit format).
-  - `email` (string, required): Customer email address.
-  - `upi_vpa` (string, required): Linked UPI ID (e.g. `name@bank`).
-  - `step_up_pin` (string, optional): 4-digit Security PIN for borderline biometric fallback.
-  - `consent_given_at` (string, optional): ISO-8601 timestamp of DPDP consent.
-  - `consent_version` (string, optional): Version string (e.g. `"v1.0_DPDP_2023"`).
-  - `palm_photos` (file / binary, required): Image frame file(s).
+- **Request Parameters**:
+  - `name`: Customer full name (string, required)
+  - `contact`: 10-digit phone number (string, required)
+  - `email`: Customer email address (string, required)
+  - `upi_vpa`: Linked UPI VPA address (string, required)
+  - `step_up_pin`: 4-digit PIN (string, optional)
+  - `consent_given_at`: ISO-8601 timestamp (string, optional)
+  - `consent_version`: Consent version string (string, optional, default `"v1.0"`)
+  - `palm_photos`: Palm camera image frame file(s) (List[UploadFile], required)
 - **Response Format (`RegisterResponse`)**:
   ```json
   {
-    "customer_id": 12,
+    "customer_id": 1,
     "mandate_order_id": "order_NzK123456789",
     "message": "Palm enrolled successfully. Mandate approval required."
   }
@@ -53,9 +55,9 @@ The frontend calls the following endpoints defined in [`lib/api-client.ts`](file
 ### 2.2 Biometric Scan 1: Customer Identification
 - **Endpoint**: `POST /session/identify`
 - **Content-Type**: `multipart/form-data`
-- **Request Fields**:
-  - `merchant_id` (string, required): Merchant terminal identifier.
-  - `palm_photo` (file / binary, required): Captured palm frame image.
+- **Request Parameters**:
+  - `merchant_id`: Merchant terminal identifier (string, required)
+  - `palm_photo`: Captured palm frame image file (UploadFile, required)
 - **Response Format (`IdentifyResponse`)**:
   ```json
   {
@@ -63,12 +65,13 @@ The frontend calls the following endpoints defined in [`lib/api-client.ts`](file
     "status": "matched", // "matched" | "borderline" | "unmatched"
     "requires_step_up": false,
     "step_up_prompt": null,
-    "customer_id": 12,
+    "customer_id": 1,
     "name": "Aditya Sharma",
     "masked_upi": "adi****@hdfcbank",
     "confidence": 0.984,
     "session_id": 104,
-    "message": null
+    "message": null,
+    "handedness": "Right"
   }
   ```
 
@@ -84,7 +87,7 @@ The frontend calls the following endpoints defined in [`lib/api-client.ts`](file
     "amount_rupees": 50
   }
   ```
-- **Response Format**:
+- **Response Format (`SetAmountResponse`)**:
   ```json
   {
     "ok": true,
@@ -97,15 +100,16 @@ The frontend calls the following endpoints defined in [`lib/api-client.ts`](file
 ### 2.4 Biometric Scan 2: Payment Authorization
 - **Endpoint**: `POST /session/authorize`
 - **Content-Type**: `multipart/form-data`
-- **Request Fields**:
-  - `session_id` (integer, required): Active transaction session ID.
-  - `palm_photo` (file / binary, required): Captured palm frame image.
+- **Request Parameters**:
+  - `session_id`: Active transaction session ID (integer, required)
+  - `palm_photo`: Captured palm frame image file (UploadFile, required)
 - **Response Format (`AuthorizeResponse`)**:
   ```json
   {
     "status": "paid", // "paid" | "borderline" | "rejected_mismatch" | "failed"
     "requires_step_up": false,
     "step_up_prompt": null,
+    "amount_rupees": 50.0,
     "razorpay_payment_id": "pay_Kx9876543210",
     "receipt_url": "/receipts/104",
     "reason": null
@@ -121,16 +125,16 @@ The frontend calls the following endpoints defined in [`lib/api-client.ts`](file
   ```json
   {
     "session_id": 104,
-    "secret": "1234" // 4-digit PIN or last 4 digits of phone number
+    "secret": "1234"
   }
   ```
-- **Response Format**: `AuthorizeResponse` or confirmation object (`{"status": "paid", ...}`).
+- **Response Format**: `AuthorizeResponse`
 
 ---
 
 ### 2.6 Merchant Ledger Transactions
 - **Endpoint**: `GET /transactions`
-- **Response Format**:
+- **Response Format (`TransactionListResponse`)**:
   ```json
   {
     "transactions": [
@@ -142,7 +146,7 @@ The frontend calls the following endpoints defined in [`lib/api-client.ts`](file
         "amount_rupees": 50,
         "status": "paid",
         "razorpay_payment_id": "pay_Kx9876543210",
-        "mandate_token_id": "token_123456",
+        "mandate_token_id": "mock_token_1",
         "authorize_confidence": 0.984
       }
     ]
@@ -151,79 +155,16 @@ The frontend calls the following endpoints defined in [`lib/api-client.ts`](file
 
 ---
 
-### 2.7 Admin Directory Management
-- **`GET /customers`**: Returns list of `AdminCustomer` objects.
-- **`PUT /customers/{customer_id}`**: Updates editable customer details (`name`, `contact`, `email`, `upi_vpa`).
-- **`DELETE /customers/{customer_id}`**: Permanently deletes customer identity and vector embeddings while retaining transaction audit rows.
+### 2.7 Customer Directory & Administration
+- **`GET /customers`**: Returns list of enrolled customers (`CustomerStateResponse[]`).
+- **`GET /customers/{id}`**: Returns single customer profile.
+- **`PUT /customers/{id}`**: Updates profile (`name`, `contact`, `email`, `upi_vpa`, `step_up_pin`).
+- **`DELETE /customers/{id}`**: Deletes customer and purges embeddings while preserving transaction audit logs.
 
 ---
 
 ## 3. Remote Raspberry Pi WebSocket Relay Protocol
 
-When paired with a merchant terminal, the frontend connects to `ws://<backend-host>/ws/session/{pairing_token}`.
-
-### 3.1 Token Generation Endpoint (Backend side)
-- **Endpoint**: `POST /terminals/{terminal_id}/pairing-token`
-- **Response**:
-  ```json
-  {
-    "terminal_id": "term_pi_01",
-    "token": "45af36a7-963f-40c1-8a02-7c5b95191be3",
-    "pair_url": "http://localhost:3000/pair?terminal=term_pi_01&token=45af36a7-963f-40c1-8a02-7c5b95191be3",
-    "expires_in": 120
-  }
-  ```
-
-### 3.2 WebSocket Relay Message Protocol
-
-#### Messages from Pi Terminal -> Backend -> Customer Browser:
-1. **Live Preview Frame**:
-   ```json
-   { "type": "video_frame", "data": "data:image/jpeg;base64,..." }
-   ```
-2. **Detection State Updates**:
-   ```json
-   {
-     "type": "detection_state",
-     "state": "positioning" | "holding" | "captured" | "none",
-     "feedback": "Center palm in viewfinder",
-     "hold_progress": 85
-   }
-   ```
-3. **Capture Complete Multi-Frame Payload**:
-   ```json
-   {
-     "type": "capture_complete",
-     "frames": ["data:image/jpeg;base64,...", "data:image/jpeg;base64,..."],
-     "mode": "identify" | "authorize"
-   }
-   ```
-4. **Pairing Confirmation**:
-   ```json
-   {
-     "type": "pairing_success",
-     "terminal_id": "term_pi_01",
-     "token": "...",
-     "message": "Connected to remote terminal."
-   }
-   ```
-
-#### Messages from Customer Browser -> Backend -> Pi Terminal:
-1. **Start Scan Command**:
-   ```json
-   { "type": "start_scan", "mode": "identify" | "authorize", "amount": 50 }
-   ```
-2. **Cancel Command**:
-   ```json
-   { "type": "cancel" }
-   ```
-
----
-
-## 4. Summary of Full Stack Backup Branch
-
-If you wish to reuse or inspect the working Python backend implementation (FastAPI, PyTorch MobileNetV2, CLAHE normalization, MediaPipe Python, SQLite vault, Razorpay Autopay integration, and standalone Pi client script), switch to the backup branch:
-
-```bash
-git checkout backup-full-stack-before-split
-```
+- **Pairing Token Generator**: `POST /terminals/{terminal_id}/pairing-token`
+- **WebSocket Endpoint**: `ws://localhost:8000/ws/session/{pairing_token}`
+- **Message Types**: `pairing_success`, `video_frame`, `detection_state`, `capture_complete`, `start_scan`, `cancel`.
