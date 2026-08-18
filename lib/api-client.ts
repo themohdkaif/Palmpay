@@ -1,5 +1,16 @@
+/**
+ * ===============================================================================
+ * PALMPAY BACKEND API CONTRACT & CLIENT HELPERS
+ * ===============================================================================
+ * This file defines the expected backend API contract. No backend is currently
+ * running — see INTEGRATION.md for the full expected endpoint/message list this
+ * frontend depends on.
+ * ===============================================================================
+ */
+
 import { IdentifyResponse, AuthorizeResponse, RegisterResponse, RegisterFormData, AdminCustomer } from "./types";
 
+// Backend API Base URL placeholder - point this at your new backend once ready
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 /**

@@ -1,3 +1,12 @@
+/**
+ * ===============================================================================
+ * PALMPAY BACKEND DATA TYPE CONTRACTS
+ * ===============================================================================
+ * This file defines the expected response/request data types. No backend is currently
+ * running — see INTEGRATION.md for the full expected API contract this frontend expects.
+ * ===============================================================================
+ */
+
 export interface IdentifyResponse {
   matched: boolean;
   status?: "matched" | "borderline" | "unmatched" | string;
