@@ -17,10 +17,17 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
  * Converts base64 JPEG data URL from react-webcam to a File object for multipart form uploads
  */
 export function dataURItoFile(dataURI: string, filename = "palm_photo.jpg"): File {
-  const arr = dataURI.split(",");
-  const mimeMatch = arr[0].match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-  const bstr = atob(arr[1] || "");
+  let mime = "image/jpeg";
+  let base64Data = dataURI;
+
+  if (dataURI.includes(",")) {
+    const parts = dataURI.split(",");
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    if (mimeMatch) mime = mimeMatch[1];
+    base64Data = parts[1];
+  }
+
+  const bstr = atob(base64Data);
   let n = bstr.length;
   const u8arr = new Uint8Array(n);
   while (n--) {
@@ -59,6 +66,12 @@ export async function identifyPalm(
   const targetUrl = `${API_BASE_URL}/session/identify`;
   const formData = new FormData();
   formData.append("merchant_id", merchantId);
+
+  console.log(`[DIAGNOSTIC identifyPalm] imageBase64 payload:`, {
+    isInputNull: imageBase64 === null,
+    length: imageBase64 ? imageBase64.length : 0,
+    prefix50: imageBase64 ? imageBase64.substring(0, 50) : "N/A (using dummy)",
+  });
 
   const palmFile = imageBase64 ? dataURItoFile(imageBase64) : createDummyPalmFile();
   formData.append("palm_photo", palmFile);
@@ -243,6 +256,12 @@ export async function registerCustomer(
   if (formData.consent_version) {
     payload.append("consent_version", formData.consent_version);
   }
+
+  console.log(`[DIAGNOSTIC registerCustomer] imageBase64 payload:`, {
+    isInputNull: imageBase64 === null,
+    length: imageBase64 ? imageBase64.length : 0,
+    prefix50: imageBase64 ? imageBase64.substring(0, 50) : "N/A (using dummy)",
+  });
 
   const palmFile = imageBase64 ? dataURItoFile(imageBase64) : createDummyPalmFile();
   payload.append("palm_photos", palmFile);
