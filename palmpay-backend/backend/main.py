@@ -20,6 +20,8 @@ MediaPipe model -- see README.md):
     uvicorn backend.main:app --reload
 """
 
+import asyncio
+import base64
 import io
 import os
 import re
@@ -27,7 +29,7 @@ from typing import List, Optional
 
 import cv2
 import numpy as np
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
@@ -44,6 +46,7 @@ from backend.schemas import (
     AuthorizeResponse, CustomerListItemResponse, CustomerStateResponse, CustomerUpdateRequest,
     IdentifyResponse, MandateApprovedRequest, RegisterResponse, SetAmountRequest, StepUpVerifyRequest,
 )
+from backend.terminals import terminal_manager
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -718,3 +721,97 @@ def get_transactions(db: Session = Depends(get_db)):
             "authorize_confidence": t.authorize_confidence
         })
     return {"transactions": results}
+
+
+# ---------------------------------------------------------------------------
+# Remote Raspberry Pi Terminal & WebSocket Relay Endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/terminals/{terminal_id}/pairing-token")
+def create_pairing_token(terminal_id: str, request: Request):
+    """
+    Generates a single-use, 2-minute pairing token for a connected Pi terminal.
+    Returns pair_url formatted for QR code generation.
+    """
+    try:
+        base_url = str(request.base_url).rstrip("/")
+        # Replace 0.0.0.0 or 127.0.0.1 with localhost for browser convenience if needed
+        base_url = base_url.replace("0.0.0.0", "localhost")
+        token_info = terminal_manager.create_pairing_token(terminal_id, base_url="http://localhost:3000")
+        return token_info
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.websocket("/ws/terminal/{terminal_id}")
+async def terminal_websocket(websocket: WebSocket, terminal_id: str, secret: Optional[str] = None):
+    """
+    WebSocket endpoint for Raspberry Pi terminal hardware.
+    Authenticates static TERMINAL_SECRET via query parameter or initial auth message.
+    Relays video_frame, detection_state, and capture_complete messages to paired browser.
+    """
+    secret_param = secret or websocket.query_params.get("secret")
+    
+    # If secret not in query params, attempt to receive first JSON auth message
+    if not secret_param:
+        await websocket.accept()
+        try:
+            auth_msg = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+            if auth_msg.get("type") == "auth":
+                secret_param = auth_msg.get("secret")
+        except Exception:
+            await websocket.close(code=4001, reason="Missing secret")
+            return
+        
+        # Connect terminal after acquiring secret from message
+        expected_secret = terminal_manager.get_expected_secret()
+        if secret_param != expected_secret:
+            await websocket.close(code=4001, reason="Invalid terminal secret")
+            return
+            
+        terminal_manager.terminals[terminal_id] = {
+            "websocket": websocket,
+            "status": "online",
+            "paired_token": None,
+        }
+        print(f"[TERMINALS] Terminal '{terminal_id}' connected via first-message auth.")
+        await websocket.send_json({"type": "auth_success", "terminal_id": terminal_id})
+    else:
+        success = await terminal_manager.connect_terminal(terminal_id, websocket, secret_param)
+        if not success:
+            return
+
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            # Relay incoming message from Pi to paired browser session
+            await terminal_manager.relay_from_pi(terminal_id, msg)
+    except WebSocketDisconnect:
+        await terminal_manager.disconnect_terminal(terminal_id)
+    except Exception as e:
+        print(f"[WS TERMINAL DISCONNECT] Terminal '{terminal_id}': {e}")
+        await terminal_manager.disconnect_terminal(terminal_id)
+
+
+@app.websocket("/ws/session/{pairing_token}")
+async def browser_session_websocket(websocket: WebSocket, pairing_token: str):
+    """
+    WebSocket endpoint for Customer Phone Browser session.
+    Pairs with the terminal associated with pairing_token.
+    Relays start_scan and cancel messages from Browser to paired Pi.
+    """
+    success = await terminal_manager.connect_browser_session(pairing_token, websocket)
+    if not success:
+        return
+
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            # Relay control command (start_scan, cancel) from Browser to Pi
+            await terminal_manager.relay_from_browser(pairing_token, msg)
+    except WebSocketDisconnect:
+        await terminal_manager.disconnect_browser_session(pairing_token)
+    except Exception as e:
+        print(f"[WS BROWSER SESSION DISCONNECT] Token '{pairing_token}': {e}")
+        await terminal_manager.disconnect_browser_session(pairing_token)
+
