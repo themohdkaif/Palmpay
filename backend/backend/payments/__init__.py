@@ -1,1 +1,0 @@
-"""Payments module package initialization."""
