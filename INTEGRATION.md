@@ -23,6 +23,11 @@ Configuration set in `.env.local` / environment:
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
+### Active Biometric Embedder Configuration
+- **Active Embedder**: `HOG+PCA (PalmEmbedder)` with `pca.joblib` pre-trained PCA whitening matrix.
+- **Rationale**: Chosen after 2026-08-19 empirical testing demonstrated cleaner genuine/impostor separation gap ($+0.3159$) than un-centered deep MobileNetV3 CNN features (which compress cosine similarities above $0.91$).
+- **Rule**: Do not switch `backend/main.py` to `PalmEmbedderCNN` without re-running the three-way feature separation benchmark.
+
 ---
 
 ## 2. Verified HTTP REST API Contract
@@ -37,7 +42,6 @@ All endpoints below have been verified against the running backend instance:
   - `contact`: 10-digit phone number (string, required)
   - `email`: Customer email address (string, required)
   - `upi_vpa`: Linked UPI VPA address (string, required)
-  - `step_up_pin`: 4-digit PIN (string, optional)
   - `consent_given_at`: ISO-8601 timestamp (string, optional)
   - `consent_version`: Consent version string (string, optional, default `"v1.0"`)
   - `palm_photos`: Palm camera image frame file(s) (List[UploadFile], required)
@@ -62,9 +66,7 @@ All endpoints below have been verified against the running backend instance:
   ```json
   {
     "matched": true,
-    "status": "matched", // "matched" | "borderline" | "unmatched"
-    "requires_step_up": false,
-    "step_up_prompt": null,
+    "status": "matched", // "matched" | "unmatched"
     "customer_id": 1,
     "name": "Aditya Sharma",
     "masked_upi": "adi****@hdfcbank",
@@ -106,9 +108,7 @@ All endpoints below have been verified against the running backend instance:
 - **Response Format (`AuthorizeResponse`)**:
   ```json
   {
-    "status": "paid", // "paid" | "borderline" | "rejected_mismatch" | "failed"
-    "requires_step_up": false,
-    "step_up_prompt": null,
+    "status": "paid", // "paid" | "rejected_mismatch" | "failed"
     "amount_rupees": 50.0,
     "razorpay_payment_id": "pay_Kx9876543210",
     "receipt_url": "/receipts/104",
@@ -118,21 +118,7 @@ All endpoints below have been verified against the running backend instance:
 
 ---
 
-### 2.5 Secondary Factor Step-Up Verification
-- **Endpoint**: `POST /session/step-up-verify`
-- **Content-Type**: `application/json`
-- **Request Body**:
-  ```json
-  {
-    "session_id": 104,
-    "secret": "1234"
-  }
-  ```
-- **Response Format**: `AuthorizeResponse`
-
----
-
-### 2.6 Merchant Ledger Transactions
+### 2.5 Merchant Ledger Transactions
 - **Endpoint**: `GET /transactions`
 - **Response Format (`TransactionListResponse`)**:
   ```json
@@ -158,7 +144,7 @@ All endpoints below have been verified against the running backend instance:
 ### 2.7 Customer Directory & Administration
 - **`GET /customers`**: Returns list of enrolled customers (`CustomerStateResponse[]`).
 - **`GET /customers/{id}`**: Returns single customer profile.
-- **`PUT /customers/{id}`**: Updates profile (`name`, `contact`, `email`, `upi_vpa`, `step_up_pin`).
+- **`PUT /customers/{id}`**: Updates profile (`name`, `contact`, `email`, `upi_vpa`).
 - **`DELETE /customers/{id}`**: Deletes customer and purges embeddings while preserving transaction audit logs.
 
 ---

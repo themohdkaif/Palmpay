@@ -199,42 +199,6 @@ export async function authorizePalm(
 }
 
 /**
- * Step-Up verification for borderline biometric scans
- */
-export async function stepUpVerify(sessionId: number, secret: string): Promise<AuthorizeResponse | any> {
-  const targetUrl = `${API_BASE_URL}/session/step-up-verify`;
-  const payload = { session_id: sessionId, secret };
-
-  console.log(`[API REQUEST] POST ${targetUrl}`, payload);
-
-  try {
-    const response = await fetch(targetUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const jsonBody = await response.json().catch(() => ({}));
-
-    console.log(`[API RESPONSE] POST ${targetUrl}`, {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-      body: jsonBody,
-    });
-
-    if (!response.ok) {
-      throw new Error(jsonBody.detail || "Invalid security PIN or phone verification code");
-    }
-
-    return jsonBody;
-  } catch (error: any) {
-    console.error(`[API ERROR] POST ${targetUrl}:`, error);
-    throw error;
-  }
-}
-
-/**
  * Register new customer with palm embeddings & Razorpay UPI Autopay mandate
  */
 export async function registerCustomer(
@@ -247,9 +211,6 @@ export async function registerCustomer(
   payload.append("contact", formData.contact);
   payload.append("email", formData.email);
   payload.append("upi_vpa", formData.upi_vpa);
-  if (formData.step_up_pin) {
-    payload.append("step_up_pin", formData.step_up_pin);
-  }
   if (formData.consent_given_at) {
     // Workaround for backend Python 3.10 datetime.fromisoformat parsing: replace trailing 'Z' with '+00:00'
     // Note: This comment & workaround can be removed once backend is updated or running on Python 3.11+

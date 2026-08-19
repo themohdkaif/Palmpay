@@ -8,9 +8,9 @@ import { RegisterModal } from "@/components/RegisterModal";
 import { PageTransition } from "@/components/PageTransition";
 import { usePalmPayStore } from "@/lib/store";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
-import { identifyPalm, setSessionAmount, authorizePalm, stepUpVerify } from "@/lib/api-client";
+import { identifyPalm, setSessionAmount, authorizePalm } from "@/lib/api-client";
 import { animateDetailsReveal } from "@/lib/gsap-animations";
-import { ShieldCheck, User, Building2, CreditCard, ArrowRight, RefreshCw, AlertCircle, CheckCircle2, Landmark, UserPlus, Lock, KeyRound } from "lucide-react";
+import { ShieldCheck, User, Building2, CreditCard, ArrowRight, RefreshCw, AlertCircle, CheckCircle2, Landmark, UserPlus } from "lucide-react";
 import gsap from "gsap";
 
 export default function ScanPage() {
@@ -37,13 +37,6 @@ export default function ScanPage() {
   const [isRegisterOpen, setIsRegisterOpen] = useState<boolean>(false);
   const [isValidAmount, setIsValidAmount] = useState<boolean>(amount >= 1 && amount <= 100);
   const detailsContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // Step-Up Secondary Factor Modal State
-  const [isStepUpOpen, setIsStepUpOpen] = useState<boolean>(false);
-  const [stepUpPin, setStepUpPin] = useState<string>("");
-  const [stepUpError, setStepUpError] = useState<string | null>(null);
-  const [stepUpPrompt, setStepUpPrompt] = useState<string>("");
-  const [isSubmittingStepUp, setIsSubmittingStepUp] = useState<boolean>(false);
 
   // Status text cycle helper
   const startStatusCycle = (modeLabel: string) => {
@@ -73,12 +66,6 @@ export default function ScanPage() {
         setIdentifiedCustomer(res);
         setSessionId(res.session_id);
         setIsScanning(false);
-
-        if (res.requires_step_up || res.status === "borderline") {
-          setStepUpPrompt(res.step_up_prompt || "Borderline biometric confidence. Please confirm your 4-digit Security PIN or last 4 digits of phone number.");
-          setIsStepUpOpen(true);
-          return;
-        }
 
         setStep("amount_confirm");
         setStatusText(t("scan.statusIdentified"));
@@ -135,13 +122,6 @@ export default function ScanPage() {
     try {
       const authRes = await authorizePalm(sessionId, imageBase64);
 
-      if (authRes.status === "borderline" || authRes.requires_step_up) {
-        setIsScanning(false);
-        setStepUpPrompt(authRes.step_up_prompt || "Borderline authorization scan detected. Please enter your 4-digit Security PIN or last 4 digits of phone number.");
-        setIsStepUpOpen(true);
-        return;
-      }
-
       if (authRes.status === "paid") {
         setAuthorizeResult(authRes);
 
@@ -177,34 +157,6 @@ export default function ScanPage() {
         setFailureReason("mismatch");
         setStatusText(t("scan.statusMismatch"));
       }
-    }
-  };
-
-  // Step-Up PIN Verification Submit Handler
-  const handleStepUpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!sessionId || !stepUpPin.trim()) return;
-
-    setStepUpError(null);
-    setIsSubmittingStepUp(true);
-
-    try {
-      const res = await stepUpVerify(sessionId, stepUpPin.trim());
-
-      setIsSubmittingStepUp(false);
-      setIsStepUpOpen(false);
-      setStepUpPin("");
-
-      if (res.status === "paid" || res.receipt_url) {
-        setAuthorizeResult(res);
-        router.push("/receipt");
-      } else {
-        setStep("amount_confirm");
-        setStatusText(t("scan.statusIdentified"));
-      }
-    } catch (err: any) {
-      setIsSubmittingStepUp(false);
-      setStepUpError(err.message || "Invalid security PIN or phone digits");
     }
   };
 
@@ -384,75 +336,6 @@ export default function ScanPage() {
             )}
           </div>
         </div>
-
-        {/* Step-Up Verification Modal Overlay */}
-        {isStepUpOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-            <div className="w-full max-w-md rounded-2xl bg-ink border-2 border-brass p-6 text-paper shadow-2xl space-y-5">
-              <div className="flex items-center gap-3 border-b border-line pb-3">
-                <div className="w-10 h-10 rounded-xl bg-brass/20 border border-brass flex items-center justify-center text-brass">
-                  <KeyRound className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-serif text-lg font-bold">Secondary Verification Required</h3>
-                  <span className="text-[10px] font-mono text-brass uppercase">Borderline Biometric Match</span>
-                </div>
-              </div>
-
-              <p className="text-xs font-mono text-slate-300 leading-relaxed">
-                {stepUpPrompt}
-              </p>
-
-              <form onSubmit={handleStepUpSubmit} className="space-y-4 font-mono text-xs">
-                {stepUpError && (
-                  <div className="p-3 rounded-xl bg-vein/30 border border-vein text-vein-bright flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{stepUpError}</span>
-                  </div>
-                )}
-
-                <div className="space-y-1.5">
-                  <label className="text-slate-400 text-[11px] flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5 text-brass" />
-                    Security PIN or Phone Digits
-                  </label>
-                  <input
-                    type="password"
-                    autoFocus
-                    required
-                    value={stepUpPin}
-                    onChange={(e) => setStepUpPin(e.target.value)}
-                    placeholder="Enter 4-digit PIN or last 4 phone digits"
-                    className="w-full px-4 py-3 rounded-xl bg-black/60 border border-brass/60 text-paper text-center font-mono text-base tracking-widest focus:outline-none focus:border-brass-bright"
-                  />
-                </div>
-
-                <div className="flex items-center gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsStepUpOpen(false);
-                      setIsScanning(false);
-                      setIsFailed(true);
-                      setStatusText("Step-up cancelled");
-                    }}
-                    className="w-1/3 py-3 rounded-xl bg-ink border border-line text-slate-400 hover:text-paper"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmittingStepUp || !stepUpPin.trim()}
-                    className="w-2/3 py-3 rounded-xl bg-gradient-to-r from-brass via-brass-bright to-brass text-ink font-serif font-bold text-sm shadow-brass-glow disabled:opacity-40"
-                  >
-                    {isSubmittingStepUp ? "Verifying..." : "Confirm & Proceed"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {/* Global Registration Modal */}
         <RegisterModal

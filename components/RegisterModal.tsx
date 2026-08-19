@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from "react";
 import Webcam from "react-webcam";
-import { User, Phone, Mail, CreditCard, RefreshCw, CheckCircle2, AlertCircle, X, Shield, Landmark, ArrowRight, ArrowLeft, Lock, FileText } from "lucide-react";
+import { User, Phone, Mail, CreditCard, RefreshCw, CheckCircle2, AlertCircle, X, Shield, Landmark, ArrowRight, ArrowLeft, FileText } from "lucide-react";
 import { registerCustomer } from "@/lib/api-client";
 import { RegisterFormData, RegisterResponse } from "@/lib/types";
 import { validateEmail, validatePhone, validateUpiVpa } from "@/lib/validation";
@@ -284,24 +284,6 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose, o
                   onChange={(e) => setFormData({ ...formData, upi_vpa: e.target.value })}
                   placeholder="e.g. aditya@hdfcbank"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-line text-paper placeholder-slate-600 focus:outline-none focus:border-brass transition-colors"
-                />
-              </div>
-
-              {/* Security PIN (Optional Fallback Secret) */}
-              <div className="space-y-1">
-                <label className="text-slate-400 flex items-center justify-between text-[11px]">
-                  <span className="flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5 text-brass" />
-                    Security PIN (Optional 4-digit PIN)
-                  </span>
-                </label>
-                <input
-                  type="password"
-                  maxLength={4}
-                  value={formData.step_up_pin || ""}
-                  onChange={(e) => setFormData({ ...formData, step_up_pin: e.target.value })}
-                  placeholder="e.g. 1234 (defaults to last 4 of phone)"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-line text-paper placeholder-slate-600 focus:outline-none focus:border-brass transition-colors font-mono"
                 />
               </div>
             </div>
