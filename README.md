@@ -25,7 +25,9 @@ PalmPay transforms physical point-of-sale checkout into a zero-touch 2-scan biom
                               |
                               v
                  [ HOG + PCA Embedder ] 
-                 ( 128-D Vector Output )
+                 ( 128-D Whitened Vector Output )
+                 * Active: HOG+PCA (PalmEmbedder) with pre-trained pca.joblib matrix.
+                 * Chosen via empirical testing (2026-08-19) for clean non-overlapping separation gap (+0.3159).
                               |
                               v
                 +----------------------------+
@@ -219,3 +221,4 @@ NEXT_PUBLIC_MEDIAPIPE_DELEGATE=GPU
 ```
 *Note: If GPU delegate is unsupported by Chromium on ARM64 WebGL, the frontend automatically falls back to CPU delegate without crashing.*
 
+# paisa
