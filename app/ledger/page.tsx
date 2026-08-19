@@ -117,9 +117,9 @@ export default function LedgerPage() {
                 {t("ledger.securityRegime")}
               </span>
               <span className="font-mono text-lg font-semibold text-paper block pt-1">
-                HOG-PCA 128-D
+                PALM BIOMETRIC 128-D
               </span>
-              <span className="text-slate-400 text-[10px]">SQLITE AUTHENTICATED</span>
+              <span className="text-slate-400 text-[10px]">SECURE RECORD</span>
             </div>
           </div>
         </div>

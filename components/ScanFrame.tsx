@@ -161,22 +161,7 @@ export const ScanFrame: React.FC<ScanFrameProps> = ({
         </div>
       )}
 
-      {/* Mismatch Simulation Toggle Box */}
-      <div className="w-full mb-4 flex items-center justify-between px-4 py-2.5 rounded-xl bg-ink border border-line text-xs text-slate-300 font-mono">
-        <span className="flex items-center gap-2">
-          <Zap className="w-3.5 h-3.5 text-brass shrink-0" />
-          <span>Simulate Mismatch Pattern</span>
-        </span>
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={shouldSimulateFailure}
-            onChange={(e) => setShouldSimulateFailure(e.target.checked)}
-            className="sr-only peer"
-          />
-          <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-vein" />
-        </label>
-      </div>
+
 
       {/* Viewfinder Container */}
       <div

@@ -102,15 +102,15 @@ export default function LandingPage() {
             <div className="reveal-item grid grid-cols-3 gap-4 w-full font-mono text-xs text-slate-400 py-1 border-y border-line/60">
               <div>
                 <span className="block text-[10px] text-slate-500 uppercase tracking-widest">{t("landing.engineLabel")}</span>
-                <span className="text-paper font-medium">HOG + PCA ML</span>
+                <span className="text-paper font-medium">BIOMETRIC ML</span>
               </div>
               <div>
                 <span className="block text-[10px] text-slate-500 uppercase tracking-widest">{t("landing.securityLabel")}</span>
-                <span className="text-paper font-medium">AES-256 HASH</span>
+                <span className="text-paper font-medium">SECURE TOKEN</span>
               </div>
               <div>
                 <span className="block text-[10px] text-slate-500 uppercase tracking-widest">{t("landing.precisionLabel")}</span>
-                <span className="text-brass font-medium">99.9% MATCH</span>
+                <span className="text-brass font-medium">VERIFIED MATCH</span>
               </div>
             </div>
 
