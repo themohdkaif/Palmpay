@@ -1,0 +1,2 @@
+# The Python backend is deployed separately (see README) — keep it out of the Vercel build.
+backend

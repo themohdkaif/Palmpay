@@ -1,10 +1,37 @@
+# Dependencies
 node_modules/
-**/node_modules/
-.env
-**/.env
-.DS_Store
-**/.DS_Store
-dist/
-build/
+
+# Next.js / Vercel build output
 .next/
-**/__pycache__/
+out/
+build/
+dist/
+.vercel/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Backend runtime data (SQLite DB with customer records + generated receipts)
+backend/data/*
+!backend/data/.gitkeep
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

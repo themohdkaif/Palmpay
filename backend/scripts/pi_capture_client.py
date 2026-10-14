@@ -5,13 +5,14 @@ Supports two deployment modes:
   Mode 1 (v1 Direct POST): Pi captures frame directly from camera and POSTs multipart form data to FastAPI endpoints.
   Mode 2 (v2 WebSocket Relay): Pi connects to backend WS relay (ws://<host>/ws/session/{token}),
           streams live low-res preview frames for UI feedback, and posts high-res multi-frame capture when triggered.
+
+Runs on the terminal device, not the server: pip install opencv-python requests websockets
 """
 
 import argparse
 import asyncio
 import base64
 import json
-import time
 import cv2
 import requests
 
@@ -116,7 +117,7 @@ def main():
     args = parser.parse_args()
 
     if args.relay_token:
-        ws_url = f"ws://{args.api_url.replace('http://', '').replace('https://', '')}/ws/session/{args.relay_token}"
+        ws_url = f"{args.api_url.rstrip('/').replace('http', 'ws', 1)}/ws/session/{args.relay_token}"
         asyncio.run(mode_websocket_relay(ws_url))
     else:
         mode_direct_post(args.api_url, args.merchant_id)

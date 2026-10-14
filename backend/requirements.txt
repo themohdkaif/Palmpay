@@ -1,27 +1,20 @@
-# Core Computer Vision & Biometrics
-mediapipe>=0.10.0
-opencv-python>=4.8.0
-numpy
-scikit-learn
-scikit-image
-joblib
+# Web API
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+python-multipart==0.0.32
+python-dotenv==1.2.3
+sqlalchemy==2.0.52
+pydantic==2.13.4
 
-# Deep Learning & ONNX Model Runtime (Optional for Track B)
-torch
-torchvision
-onnx
-onnxruntime
-onnxscript
+# Palm recognition pipeline
+mediapipe==0.10.33
+opencv-python==5.0.0.93
+numpy==2.2.6
+scipy==1.14.1
+scikit-learn==1.7.2
+scikit-image==0.25.2
+joblib==1.5.3
 
-# Receipt Generation & Utilities
-reportlab
-python-dotenv
-
-# Backend & Web API
-fastapi
-uvicorn[standard]
-sqlalchemy
-pydantic
-python-multipart
-razorpay
-websockets
+# Payments & receipts
+razorpay==2.0.1
+reportlab==5.0.0
